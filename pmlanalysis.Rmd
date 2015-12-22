@@ -1,0 +1,109 @@
+---
+title: "Predicting Weight Lifting Method"
+author: "Robert Granger"
+date: "December 21, 2015"
+output: html_document
+---
+
+##Introduction
+Using pml data, let's see if we can construct an algorithm that will allow us to correctly predict the manner in which a person conducted an exercise.  After loading and cleaning the pml-dataset, we'll look at a few exploratory graphs to see if any obvious predictors can be realized.  Next we will look at two different models: RPART and Random Forest.  We will select a model and then test for accuracy.
+
+
+##Loading and Cleaning the Data
+To begin, let's load in the pml dataset.  We have a dataset in which to conduct our analysis and a test dataset to evaluate upon when all finished.
+
+```{r}
+pmldata <- read.csv("pml-training.csv")
+pmltestdata <- read.csv("pml-testing.csv")
+```
+
+This dataset is quite messy with many missing values.  To begin let's remove the columns where most of the data is missing:
+```{r}
+pmldata <- pmldata[,!is.na(pmltestdata[1,])] 
+pmltestdata <- pmltestdata[,!is.na(pmltestdata[1,])] #removes missing columns
+```
+Next let's remove a couple more columns that won't be useful in our predictions.
+```{r}
+pmldata <- pmldata[,-c(1,3,4,5)]
+pmltestdata <- pmltestdata[,-c(1,3,4,5)] #removes unneccessary columns
+```
+
+##Load Relevant Libraries
+This section just shows the libraries that will be used in our analysis.
+```{r libraries, warning=FALSE, message=FALSE}
+library(caret)
+library(rattle)
+library(ggplot2)
+```
+
+##Create Training and Testing Set
+Here we'll just split the dataset into a training set and a testing set.
+```{r}
+set.seed(61788)
+inTrain <- createDataPartition(y=pmldata$classe,p=0.7,list=FALSE)
+training <- pmldata[inTrain,]
+testing <- pmldata[-inTrain,]
+```
+
+##Exploratory Analysis
+Before selecting a model, let's take a look at the data.  Since we have so many predictor variables, I will just look at a subset of the data.
+```{r}
+summary(training[,c(1,2,3,7,20,33,46,56)])
+```
+
+Also let's look at a feature plot of the total acceleration from the belt, arm, dumbell, and forearm.
+
+```{r featureplot,  cache=TRUE}
+featurePlot(x=training[,c(7,20,33,46,56)], 
+            y=training$classe, 
+            plot="pairs")
+```
+
+Quickly looking at these plots doesn't seem to reveal any obvious predictors.
+
+##Modeling
+
+###Recursive Partitioning and Regression Trees (rpart)
+For modelling the exercise type, we'll be looking at two different techniques.  The first is the Recursive Partitioning and Regression Trees (rpart).
+
+```{r rpart, cache=TRUE}
+modFit1 <- train(classe~.,method="rpart",tuneLength=3,data=training)
+fancyRpartPlot(modFit1$finalModel)
+```
+
+This extremely simple model is able to correctly identify `r round(confusionMatrix(predict(modFit1,training),training$classe)$overall[1]*100,2)` percent of the training data into the correct category.
+
+Although we'll be sacrificing simplicity, let's increase the tunelength to 100 in order to improve accuracy.
+
+```{r rpart2, cache=TRUE}
+modFit2 <- train(classe~.,method="rpart",tuneLength=100,data=training)
+```
+
+We we're able to correctly identify `r round(confusionMatrix(predict(modFit2,training),training$classe)$overall[1]*100,2)` percent of the data.  Next, let's look see how the algorithm compares on the testing set:
+
+```{r rpart3, cache=TRUE}
+confusionMatrix(predict(modFit2,testing),testing$classe)
+```
+
+We managed to get 96% accuracty on the testing set.  Let's see if we can do better by using the random forest method.
+
+###Random Forest
+In this section we will be applying the random forest algorithm.  Unfortunately, this can take a very long time.  In order to reduce this time (and in the process unfortunately decrease accuracy), we will place a control.
+
+```{r randomforest, cache=TRUE, warning=FALSE, message=FALSE}
+control <- trainControl(method = "repeatedcv",number = 5)
+modFit3 <- train(classe~.,method="rf",data=training,trControl=control)
+```
+
+```{r randomforest2, cache=TRUE}
+confusionMatrix(predict(modFit3,training),training$classe)
+```
+
+```{r randomforest3, cache=TRUE}
+confusionMatrix(predict(modFit3,testing),testing$classe)
+```
+
+Astonishingly, this model was able to predict over 99 percent of the testing data accurately, hence our out-of-sample error is very small.
+
+###Conclusion
+Immediately looking at the data doesn't seem to produce any obvious patterns.  We were able to find a pattern, however, by applying a RPART and Random Forest model.  Both predicted the testing set well but the Random Forest was much better.  In the end, we were able to accurately predict 99% of the testing data.
